@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crop.Agri Portal</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b0f19; color: #ffffff; margin: 0; padding: 15px; }
+        .container { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        .header { text-align: center; border-bottom: 1px solid #1f2937; padding-bottom: 10px; }
+        h1 { margin: 0; color: #ffffff; font-size: 24px; }
+        .subtitle { color: #34d399; font-size: 13px; text-transform: uppercase; margin: 5px 0 0 0; }
+        .main-layout { display: flex; flex-direction: row; gap: 20px; }
+        .map-box { flex: 2; }
+        .output-box { flex: 1; background: #111827; padding: 15px; border-radius: 8px; border: 1px solid #1f2937; height: fit-content; }
+        #map { width: 100%; height: 480px; border-radius: 8px; border: 1px solid #374151; }
+        .status-card { background: #1f2937; padding: 12px; border-radius: 6px; text-align: center; font-weight: bold; margin-bottom: 15px; border: 1px solid #374151; color: #34d399; }
+        .matrix-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .matrix-table th, .matrix-table td { padding: 10px; text-align: left; border-bottom: 1px solid #1f2937; font-size: 14px; }
+        .score-val { font-weight: bold; text-align: right; }
+        @media (max-width: 768px) { .main-layout { flex-direction: column; } #map { height: 350px; } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Crop.Agri Portal</h1>
+        <p class="subtitle">Chengalpattu Multi-Crop Analytics Engine</p>
+    </div>
+
+    <div class="main-layout">
+        <div class="map-box">
+            <div id="map"></div>
+        </div>
+        
+        <div class="output-box">
+            <div class="status-card" id="status-text">Awaiting Map Click Target...</div>
+            <h3 style="margin-top:0; font-size:15px; color:#9ca3af;">SUITABILITY REPORT MATRIX</h3>
+            <table class="matrix-table" id="report-table">
+                </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    // LINK UP BACKEND PIPELINE: Replace this with your exact cloud web address from Render
+    const BACKEND_URL = "https://YOUR-RENDER-URL-HERE.onrender.com";
+
+    // Set up map centered on Chengalpattu coordinates
+    var map = L.map('map').setView([12.67, 79.98], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: 'OpenStreetMap contributors'
+    }).add_to(map);
+
+    var marker;
+
+    map.on('click', async function(e) {
+        if (marker) { map.removeLayer(marker); }
+        marker = L.marker(e.latlng).add_to(map);
+
+        const statusCard = document.getElementById('status-text');
+        const reportTable = document.getElementById('report-table');
+        
+        statusCard.innerText = "Analyzing Field Grid Data...";
+        statusCard.style.color = "#f59e0b";
+
+        try {
+            // Ping your FastAPI cloud backend with the tapped coordinates
+            const response = await fetch(`${BACKEND_URL}/evaluate?lat=${e.latlng.lat}&lon=${e.latlng.lng}`);
+            const data = await response.json();
+
+            if (!data.is_valid) {
+                statusCard.innerText = data.message;
+                statusCard.style.color = "#ef4444";
+                reportTable.innerHTML = "";
+                return;
+            }
+
+            statusCard.innerText = `Location Locked: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+            statusCard.style.color = "#10b981";
+
+            let html = "";
+            if (!data.arable) {
+                html += `<tr><td colspan="2" style="color:#ef4444; text-align:center; font-weight:bold;">${data.message}</td></tr>`;
+            } else {
+                html += `<tr><td>Paddy Cultivation</td><td class="score-val" style="color:#10b981;">${data.scores.paddy} / 10</td></tr>`;
+                html += `<tr><td>Pulses & Groundnuts</td><td class="score-val" style="color:#f59e0b;">${data.scores.pulses} / 10</td></tr>`;
+                html += `<tr><td>Millets & Sorghum</td><td class="score-val" style="color:#60a5fa;">${data.scores.millets} / 10</td></tr>`;
+                
+                // Unpack your dynamic environmental indicator tray metrics
+                for (const [key, value] of Object.entries(data.environmental_indicators)) {
+                    let cleanKey = key.replace(/_/g, ' ').toUpperCase();
+                    html += `<tr style="background:#0f172a;"><td style="font-size:12px; color:#9ca3af;">${cleanKey}</td><td class="score-val" style="font-size:12px;">${value}</td></tr>`;
+                }
+            }
+            reportTable.innerHTML = html;
+
+        } catch (error) {
+            statusCard.innerText = "Server connection timeout error.";
+            statusCard.style.color = "#ef4444";
+        }
+    });
+</script>
+</body>
+</html>
